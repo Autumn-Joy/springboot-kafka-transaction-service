@@ -37,7 +37,7 @@ learning some tips:
   - test-driven development: red, green, refactor.
 - SDKMan with ZSH seems to work more smoothly with Java than Homebrew did with Fish (on Mac)
 
-## Task 2:
+## Task 2: Integrate a Kafka Listener for `Transaction` Objects
 
 This task is all about Kafka, so I'm starting by reading some of the documentation to get familiar with the context of the task.
 
@@ -410,3 +410,114 @@ notes on debugging:
 - add the following to the application.yml file:
   - `auto-offset-reset: earliest`
   - this tells Kafka to start reading from the beginning of the topic, ensuring that all messages are read
+
+## Task 3: Add a database (H2) and data ingestion (Kafka)
+
+### Examining the task instructions:
+>**Task instructions:**
+> 
+> - Configure Midas Core to use an H2 in-memory database through Spring Boot and JPA.
+>
+> - Implement validation logic to determine whether a transaction is valid based on user IDs and account balances.
+>
+> - Create a TransactionRecord JPA entity and persist valid transactions while discarding invalid ones.
+>
+> - Update the sender and recipient balances when transactions are successfully processed.
+>
+> - Run TaskThreeTests, inspect the final balance of the waldorf user in your debugger, and submit the rounded-down value.
+
+
+**validation logic:**
+>A transaction is considered valid if the following are true:
+>
+> - The senderId is valid
+> - The recipientId is valid
+> - The sender has a balance greater than or equal to the transaction amount
+
+### Quick brainstorm before hitting the docs:
+
+- last project where I added a database was a MVC Spring project.
+  - model, view, controller
+  - do we write controllers here?
+  - maybe we don't even deal with controllers because it's completely backend and there currently is no frontend
+  - do controllers only exist to handle interaction between the frontend and backend?
+
+
+- @Valid will likely come into play here
+  - sender balance > = transaction.amount
+  - how to access the sender balance? (repository action?)
+
+- steps to take (possibly):
+  - link H2 database to Midas Core
+  - validate transaction (entity @valid)
+  - record to database (repository action)
+  - update sender and recipient balances (repository action too?)
+  - how do you delete a transaction before it's added to the database (case of invalid transaction)?
+
+> Transaction entities should maintain a many-to-one relationship 
+> with their respective sender and recipient User entities 
+> 
+> (hint: this will necessitate creating a new TransactionRecord class 
+> with an @entity annotation rather than modifying the existing Transaction class).
+
+> Integrate with the database using Spring Data JPA.
+
+
+- `UserRepository.java` (already written) answers "how will i access the sender balance?"
+  ```aiignore
+  public interface UserRepository extends CrudRepository<UserRecord, Long> {
+  UserRecord findById(long id);
+  }
+  ```
+- `DatabaseConduit.java` has a helpful `save()` method for saving user records to the database.
+  ```aiignore
+  public class DatabaseConduit {
+  private final UserRepository userRepository;
+  
+      public DatabaseConduit(UserRepository userRepository) {
+          this.userRepository = userRepository;
+      }
+  
+      public void save(UserRecord userRecord) {
+          userRepository.save(userRecord);
+      }
+
+  }
+  ```
+  
+- from reading test3, it looks like this test goes like this:
+  - loads users and transactions
+  - so going into the test, I'm starting with an empty database
+  - I just need to tell the listener (already built) what to do with the messages
+    - use Spring Data JPA and CRUD Repository (there's already an example written)
+    - validate the transaction first
+    - save the transaction if it's valid using JPA
+    - update the sender and recipient balances  
+    
+  ```
+    void task_three_verifier() throws InterruptedException {
+        userPopulator.populate();
+        String[] transactionLines = fileLoader.loadStrings("/test_data/mnbvcxz.vbnm");
+        for (String transactionLine : transactionLines) {
+            kafkaProducer.send(transactionLine);
+        }
+  ```
+  
+- ** thoughts and reflections: **
+  - wow we use application.yml a lot more than i realized we would
+
+
+- I think the most important thing to remember is that the Kafka listener is only responsible for receiving messages.
+- the rest of the application is responsible for processing the messages and updating the database.
+
+### Step 1: configure H2 database
+
+- helpful tutorial
+  - https://www.baeldung.com/spring-boot-h2-database
+  - add dependencies (already added in step 1 actually)
+  - Spring JPA and H2 are the main dependencies to add.
+  - configure application.yml to for H2 console, JPA, and basic H2
+
+### Step 2: 
+- Spring JPA docs
+  - https://docs.spring.io/spring-data/jpa/reference/repositories/core-concepts.html
