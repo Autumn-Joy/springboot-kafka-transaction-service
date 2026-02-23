@@ -740,7 +740,7 @@ confirmation of data in H2 console:
 
 ## Task 3: Add a database (H2) and data ingestion (Kafka)
 
-### Examining the task instructions:
+### Step 1: Examining the task instructions:
 >**Task instructions:**
 > Run the provided Incentive API service locally and connect Midas Core to its /incentive endpoint.
 >Implement a method that posts validated Transaction objects to the Incentive API and receives an Incentive response. 
@@ -751,3 +751,131 @@ confirmation of data in H2 console:
   - sending POST requests
   - deserializing JSON responses into Java objects
 - Stable API contracts
+
+
+### Step 2: hit the docs again: learning about Spring RestTemplate and REST APIs
+
+- From the instructions (very helpful discussion on decoupled services and REST APIs):
+>The Incentive API is quite simple - it exposes a single endpoint that returns incentive information 
+> when passed data about a transaction. Your team doesn't know or care about the logic that determines incentives - 
+> it has been decoupled from the part of the system you are working on, 
+> and can therefore be treated like a black box. By designing the system as two separate components, 
+> a change to one can be made without affecting the other. 
+> 
+> Furthermore, since the two units of behavior are being worked on by separate teams, 
+> articulating the system as two separate components (and therefore two separate codebases) 
+> allows each team to maintain ownership over the behavior they care about. 
+> One team can make changes to their component without affecting the other, provided the API does not change.
+> 
+> Therefore, the REST API acts as a contract between the two teams/components, 
+> provided the contract isn't broken, one component can be modified with the guarantee 
+> that it will not affect the other.
+
+- exposes a single endpoint
+- returns information about an incentive when passed data about a transaction
+
+- this API is communicating between two codebases, not necessarily a client and server.
+- but the relationship is very much like a client and server.
+- the request/response pattern lends itself to a REST API solution
+
+- Incentive API has already been built, so all it needs to be done is to implement it.
+
+
+- *terms to learn*:
+  - executable JAR containing a copy of the incentives API controller
+  - difference between an endpoint and an API 
+
+
+- **Spring RestTemplate**
+  - the Spring version of Axios
+  - but what is Axios?
+    - **a library that makes HTTP requests from the browser or Node.js**
+  - what is RestTemplate?
+    - **a Spring class that makes HTTP requests using Spring's RestTemplate class**
+  - Spring RestTemplate: direct request-response communication (HTTP)
+
+
+- "What is REST?"
+  - JSON over HTTP
+- What is HTTP?
+  - a protocol for sending requests and receiving responses over the internet
+  - when you type a url into a browser, your browser is acting as a client and the url is the request.
+  - the url hits an endpoint that the server has exposed 
+  - the server receives the request, processes it, and sends a response back
+
+- **key term: HTTP Client Library**
+  - Axios (JavaScript), Spring RestTemplate (Java), requests (Python)
+  - **a library that helps you make HTTP requests from your *client-side* code**
+  - (in this case, midascore is acting as the client)
+
+
+
+- HTTP client libraries make it easier to send requests and receive responses from a server.
+- without an HTTP client library, you'd be dealing with TCP (different layer of networking)
+  - that gets into some really complicated stuff that we really don't need to worry about
+  - yay for libraries!
+
+- HTTP client libraries kind of like what the Kafka producer does in the background in sending messages to Kafka
+  - the Kafka producer handles much more complicated interactions with Kafka 
+  - it simplifies the process of sending messages from Kafka.
+  - similarly, HTTP client libraries abstract away some of the complexity of making HTTP requests.
+
+
+- very useful resource that details the methods available in Spring RestTemplate:
+  - https://docs.spring.io/spring-android/docs/current/reference/html/rest-template.html
+  - potentially helpful example:
+  ```
+  String url = "https://ajax.googleapis.com/ajax/services/search/web?v=1.0&q={query}";
+              
+  // Create a new RestTemplate instance
+  RestTemplate restTemplate = new RestTemplate();
+  
+  // Add the String message converter
+  restTemplate.getMessageConverters().add(new StringHttpMessageConverter());
+  
+  // Make the HTTP GET request, marshaling the response to a String
+  String result = restTemplate.getForObject(url, String.class, "SpringSource");
+  ```
+
+### Step 3: executable JARs??
+
+- What is a Jar file?
+  - https://stackoverflow.com/questions/12079230/what-exactly-does-a-jar-file-contain
+  - > A JAR ("Java archive") file is a package file format typically used to aggregate many Java class files and associated metadata and resources (text, images, etc.) into one file for distribution.
+    - https://en.wikipedia.org/wiki/JAR_(file_format)
+    - `java -jar foo.jar` is how to run a JAR file in the terminal.
+
+- I need to understand the context of this choice:
+  > An executable JAR containing a copy of the incentives API controller, which runs on local port 8080, 
+  > has been included in the services folder of the project repo. 
+  > 
+  > The API has a single endpoint “/incentive” which accepts JSON POST requests and can be reached at 
+  > "http://localhost:8080/incentive" (when the aforementioned jar is running). 
+
+- questions for investigation:
+  - what is a executable JAR?
+  - how to run a JAR file?
+  - 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
