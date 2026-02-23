@@ -4,13 +4,13 @@ Project repo for the JPMC Advanced Software Engineering Forage program
 ---
 
 # Project notes
-**Autumn Hicks | SWE, Java track @ WGU | Class of 2026**
-
+### Autumn Hicks | SWE, Java track @ WGU | Class of 2026
 *~ * purposely self-written and un-AI-generated to document my personal learning process * ~*
+*~ * February 2 * ~*
 
 
 ## Project Context
-This project was created by JP Morgan to model implementing features in a real system with Spring Boot, Kafka, and a SQL database (H2).
+The scaffold for this project was created by JP Morgan to model implementing features in a real system with Spring Boot, Kafka, and a SQL database (H2).
 
 From the project description:
 
