@@ -518,6 +518,236 @@ notes on debugging:
   - Spring JPA and H2 are the main dependencies to add.
   - configure application.yml to for H2 console, JPA, and basic H2
 
-### Step 2: 
+### Step 2: add the TransactionRecord entity & repository
 - Spring JPA docs
   - https://docs.spring.io/spring-data/jpa/reference/repositories/core-concepts.html
+
+
+- the tasks list went like this:
+  - implement H2
+  - implmenet validation logic
+    - where does the validation logic go?
+    - what type calls JPA, is it entities? transactionRecord calls JPA?
+    - where would @Valid be used, if at all?
+  
+- **key question:** what fields does transactionRecord need to have?
+  - it should match `Transaction.java`:
+  ```
+    private long senderId;
+    private long recipientId;
+    private float amount;
+    ```
+  - since it has those same fields, should I extend the class?
+    - no, because it's an entity, not a [?] (whatever `Transaction` actually is)
+    - because it's an entity, it maps to DB columns and needs explicit fields in order to do that.
+  - for getters and setters, should you really be able to set the recipientId and senderId etc?
+
+  
+- **I really need a refresher on Spring Data JPA and entities**.
+  - ** Entities ARE the models. ** (MVC)
+  - ** Repositories handle the model-database interactions. **
+
+
+- Very helpful definition of Spring Data JPA:
+  > JPA repositories are interfaces in Spring Data 
+  > that allow you to perform basic CRUD (Create, Read, Update, Delete) operations 
+  > without writing complex SQL queries. 
+  > Instead of writing SQL, you work with Java objects, 
+  > and Spring Data JPA takes care of translating these operations into database commands.
+  
+  - Source: https://medium.com/@aissatoub4228/a-beginners-guide-to-spring-boot-jpa-repositories-simplifying-database-access-151a74a772db
+
+- okay, so going off that definition...
+- transactionRecord entity means a table in the db represented by a Java object
+  - fields are columns in the table
+  - the way we will interact with this transactionRecord entity (table) is not through raw SQL in a db tool
+  - we will interact with the transactionRecord entity (table) through the Spring Data JPA repository
+    - since we're using Spring Data JPA, we will need a repository interface for transactionRecord that extends CrudRepository
+    - updating the sender and recipient balances will be done through the repository interface
+
+- reading more...
+  - https://spring.io/guides/gs/accessing-data-jpa
+  - https://docs.spring.io/spring-data/jpa/reference/repositories/core-concepts.html
+
+- add `TransactionRecordRepository.java` to extend `CRUDRepository`:
+
+  ```aiignore
+  public interface TransactionRecordRepository extends CrudRepository<TransactionRecord, Long> {
+  
+  }
+  ```
+
+** quick detour: test the h2 database connection**
+- 
+
+- I had wanted to test this before moving forward, but wasn't sure of a time-effective way to do that.
+- These Spring docs showed a simple logger example which is a quick way to test the connection:
+- https://spring.io/guides/gs/accessing-data-jpa
+
+- use a logger (based off the Spring template) to preload some data using the TransactionRecord entity and TransactionRecordRepository
+- view in H2 console and in logs
+
+```aiignore
+    @Bean
+    public CommandLineRunner demo(TransactionRecordRepository repository) {
+        return (args) -> {
+        
+            repository.save(new TransactionRecord(new Transaction(1L, 2L, 100.0f)));
+            repository.save(new TransactionRecord(new Transaction(2L, 3L, 250.5f)));
+            repository.save(new TransactionRecord(new Transaction(1L, 3L, 75.0f)));
+            repository.save(new TransactionRecord(new Transaction(3L, 1L, 500.0f)));
+            repository.save(new TransactionRecord(new Transaction(2L, 1L, 150.25f)));
+
+            logger.info("Transaction records found with findAll():");
+            logger.info("-------------------------------");
+            repository.findAll().forEach(record -> {
+                logger.info(record.toString());
+            });
+            logger.info("");
+        };
+    }
+```
+
+confirmation of data in H2 console:
+![img_2.png](img_2.png)
+
+
+### Step 3: Add a validation (service layer) class
+- for validating the transaction, I can use a service layer class
+  - the `TransactionKafkaListener` class will call the service layer class (`TransactionValidationService`)
+  - purpose: to validate the transaction before saving it to the database
+  - pseudo-code version of the validation rules provided:
+  ```aiignore 
+    // using transaction.recipientId
+    // (lookup by id user), if found then recipientId is valid
+
+    //AND
+
+    // using transaction.senderId
+    // (lookup by id user), if found then senderId is valid
+
+    //AND
+
+    // if sender.balance >= transaction.amount
+
+    // THEN transaction is valid.
+  ```
+- **answer to (previous) key question:** "where does the validation logic go?"
+  - it should go in the `TransactionValidationService` class.
+  - it should be called from the `TransactionKafkaListener` class.
+
+- how to use the `UserRepository` in the `TransactionValidationService`?
+    - https://www.baeldung.com/constructor-injection-in-spring
+    - constructor injection
+    - declare a field for the `UserRepository` in the `TransactionValidationService` class
+    - add a constructor to the `TransactionValidationService` class that takes in a `UserRepository`
+  - this is true for all dependencies in the application
+
+> # **I knew dependency injection in concept, but learning how to actually implement it in code makes SO MUCH sense now!!**
+
+```aiignore
+
+    private final UserRepository userRepository;
+
+    public ValidateTransactionService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+```
+
+- that one discovery unlocked this entire task.
+- the `UserRepository` allows user lookup by id
+- the `TransactionRecordRepository` allows saving transaction records to the database
+- the getters and setters on the `UserRecord` entity allows updating the sender and recipient balances
+
+
+### Debugging the validation logic
+- adding print statements throughout the validation process to test each validation rule
+- using the logs (in the Debug tab) to see what transactions are coming in, which ones are being marked as invalid or valid
+
+  ```aiignore
+   public String processTransaction(Transaction transaction) {
+          UserRecord sender = userRepository.findById(transaction.getSenderId());
+          UserRecord recipient = userRepository.findById(transaction.getRecipientId());
+  
+          System.out.println("Sender info:" + sender);
+          System.out.println("Recipient info: " + recipient);
+          System.out.println("Transaction info: " + transaction);
+  
+          //  validate transaction
+          if (!transactionValidationService.isValid(transaction)) {
+              System.out.println("Transaction is invalid");
+              return "Invalid transaction. Transaction discarded.";
+  //            throw new Error("Invalid transaction. Transaction discarded. Please try again and ensure that (1) the Sender Id and Recipient Id are valid and (2) that the sender's balance is equal or above the transaction amount.");
+          }
+          System.out.println("Transaction is valid");
+          //save transaction to database
+          transactionRecordRepository.save(new TransactionRecord(transaction));
+          System.out.println("Transaction saved to database");
+  
+          //update sender balance and SAVE TO DB!
+          sender.setBalance(sender.getBalance() - transaction.getAmount());
+          userRepository.save(sender);
+  
+          //update recipient balance and SAVE TO DB!
+          recipient.setBalance(recipient.getBalance() + transaction.getAmount());
+          userRepository.save(recipient);
+  
+          return "Transaction saved to database and updated sender and recipient balances.";
+      }
+
+    ```
+  - many logs, would take a long time to read through each transaction and do the math. Using AI to speed up the processing.
+  - "using these 3 validation rules, examine these logs for any inconsistencies."
+  - findings: all transactions are correctly marked as valid or invalid, but users amounts oddly stay the same even after they are senders and have valid transactions.
+    - the transactions aren't impacting the user balances. the new balances aren't being persisted from transaction to transaction.
+    - but the processing logic includes updating the sender and recipient amounts. why wouldn't it persist?
+
+
+  - **key discovery:** USE repository to save updated user records to the database!
+    - any time you do an action on entities, you need to use a repository to save the changes to the database!
+
+    - example: I was correctly updating the sender and recipient balances in the `TransactionValidationService` class, but because i wasn't using the repository to save those updates, the changes weren't persisting (this seems obvious now).
+
+    - former version:
+    ```        
+          //update sender balance
+          sender.setBalance(sender.getBalance() - transaction.getAmount());
+
+          //update recipient balance
+          recipient.setBalance(recipient.getBalance() + transaction.getAmount());
+    ```
+    - updated version:
+    ```  
+    //update sender balance and SAVE TO DB!
+      sender.setBalance(sender.getBalance() - transaction.getAmount());
+      userRepository.save(sender);
+
+    //update recipient balance and SAVE TO DB!
+      recipient.setBalance(recipient.getBalance() + transaction.getAmount());
+      userRepository.save(recipient);
+    ```
+    
+### Reflections on adding the transaction validation and processing services:
+
+- add entities for your tables
+  - fields are columns
+- use repositories (CrudRepository) to interact with the entities
+- use dependency injection to use repositories in your services
+  - declare a field for the repository in the service class
+  - add a constructor to the service class that takes in the repository
+- when updating entities, ALWAYS use the repository to save changes to the database
+  - or else it doesn't matter how pretty your logic was. it still won't work.
+
+## Task 3: Add a database (H2) and data ingestion (Kafka)
+
+### Examining the task instructions:
+>**Task instructions:**
+> Run the provided Incentive API service locally and connect Midas Core to its /incentive endpoint.
+>Implement a method that posts validated Transaction objects to the Incentive API and receives an Incentive response. 
+> Update your transaction-processing logic to store the incentive amount and correctly adjust user balances—adding incentives to recipients but not subtracting them from senders. 
+> Run TaskFourTests, use your debugger to determine wilbur’s final balance, and submit the rounded-down result.
+
+- Spring RestTemplate
+  - sending POST requests
+  - deserializing JSON responses into Java objects
+- Stable API contracts
