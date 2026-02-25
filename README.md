@@ -1086,3 +1086,63 @@ User[id=5, name='waldorf', balance='444.549988'
     - `TransactionIncentiveClient` returns the incentive amount using `TransactionIncentiveDTO`
   - `TransactionService` updates the transaction record with the incentive amount
   - `TransactionService` updates the sender and recipient balances as well as the TransactionRecord
+
+
+## Task 5: building a `GET` endpoint for user balance
+
+### Step 1: adding the controller
+
+- writing controllers is actually kind of familiar to me
+- How to add request params?
+  - https://spring.io/guides/gs/rest-service
+  - helpful example: `@RequestParam(defaultValue = "World")`
+  ```
+  @RestController
+  public class GreetingController {
+  
+  private static final String template = "Hello, %s!";
+  private final AtomicLong counter = new AtomicLong();
+  
+  @GetMapping("/greeting")
+  public Greeting greeting(@RequestParam(defaultValue = "World") String name) {
+  return new Greeting(counter.incrementAndGet(), template.formatted(name));
+  }
+  }
+  ```
+  
+  - so that means mine needs to be something like:
+  ```
+      @GetMapping("/balance")
+    public Balance balance(@RequestParam long userId) {
+        UserRecord user = userRepository.findById(userId);
+
+        return new Balance(user.getBalance());
+    }
+  ```
+  
+- Question: why write 
+  - `return new Balance(user.getBalance());` 
+  - instead of 
+  - `return user.getBalance();`?
+  - returning a new `Balance` instance serializes the response into JSON.
+
+### Step 2: configuring the port for the API to run on 
+
+> Your spring application should expose this API on port 33400.
+
+- question: how to configure the port the API runs on?
+  - use application.yml?
+  - simple Google search confirms:
+  - > You can expose a Spring Boot API on a specific port by 
+    > configuring the server.port property in your application.properties or application.yaml file, 
+    > or by using command-line arguments. By default, Spring Boot uses port 8080.
+
+### Step 3: debugging
+
+- the user lookup doesn't have any validation.
+- how does `CrudRepository` findById work?
+  - what does it return if the user is not found, that will decide how i write the validation rule
+  - the controller still needs to handle returning a balance of 0 if the user is not found.
+- add `existsById` for user lookup validation
+
+### Step 4: `GET /balance` endpoint successfully working!
