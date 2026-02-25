@@ -5,8 +5,9 @@ Project repo for the JPMC Advanced Software Engineering Forage program
 
 # Project notes
 ### Autumn Hicks | SWE, Java track @ WGU | Class of 2026
-*~ * purposely self-written and un-AI-generated to document my personal learning process * ~*
-*~ * February 2 * ~*
+*~ *purposely self-written and un-AI-generated to document my personal learning process* ~*
+
+*~ * February 25, 2025 * ~*
 
 
 ## Project Context
