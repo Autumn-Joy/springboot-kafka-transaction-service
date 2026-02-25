@@ -1024,3 +1024,52 @@ that's it.
     - what's the difference between `RestClient` and `RestTemplate`?
   - https://docs.spring.io/spring-boot/reference/io/rest-client.html#io.rest-client.httpservice
 
+
+- extremely helpful explanation of how to use `RestTemplate` to make a `Post` call:
+  - https://www.geeksforgeeks.org/advance-java/spring-boot-rest-template/
+
+- implemented the `TransactionIncentiveClient` class
+
+
+### debugging
+- run the executable jar in a separate terminal while running the tests
+
+- by adding several print statements to track `Transaction` state throughout the `processTransaction` method, 
+  - it's clear that the incentive amount is not actually being added to the transaction record.
+  - solution: the entity `TransactionRecord` hadn't received the updated field `incentiveAmount`, unlike `Transaction` which had been udpated.
+
+
+- what fields are being returned in the `Transaction` after the `POST`?
+  - 
+  ```
+    Transaction before validation: Transaction {senderId=9, recipientId=6, amount=103.95}
+    Transaction is valid: Transaction {senderId=9, recipientId=6, amount=103.95}
+    Updated Transaction after `POST`: Transaction {senderId=0, recipientId=0, amount=0.0}
+    Transaction after API called:Transaction {senderId=0, recipientId=0, amount=0.0}
+    Transaction Incentive Amount: 0.0
+    Sender balance after transaction: 3089.42
+    Recipient balance after transaction: 712.92004
+  ```
+  
+  - the `POST` is returning one `amount` field which is overriding the `Transaction.amount` instead of adding it to the `incentiveAmount` field.
+    - this aligns exactly with the project spec:
+    -  > The endpoint will respond with a JSON serialized Incentive object which has a single field: “amount.”
+  - solution: a data transfer object (DTO) for the incentive amount: 
+
+
+printing logs like this is extremely helpful:
+```aiignore
+Before Post: ................
+SenderRecord:User[id=9, name='wilbur', balance='3476.209961'
+RecipientRecord:User[id=10, name='antonio', balance='2121.540039'
+Transaction {senderId=9, recipientId=10, amount=16.0}
+Incentive amount after `POST`: 4.0
+Transaction Incentive amount: 4.0
+TransactionRecord:Transaction {senderId=9, recipientId=10, amount=16.0}
+SenderRecord:User[id=9, name='wilbur', balance='3460.209961'
+RecipientRecord:User[id=10, name='antonio', balance='2141.540039'
+User[id=5, name='waldorf', balance='444.549988'
+Transaction is invalid
+User[id=5, name='waldorf', balance='444.549988'
+
+```
