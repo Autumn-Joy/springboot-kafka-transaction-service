@@ -837,7 +837,7 @@ confirmation of data in H2 console:
   String result = restTemplate.getForObject(url, String.class, "SpringSource");
   ```
 
-### Step 3: executable JARs??
+### Step 3: running executable JARs & testing the endpoint in Postman, 
 
 - What is a Jar file?
   - https://stackoverflow.com/questions/12079230/what-exactly-does-a-jar-file-contain
@@ -852,30 +852,175 @@ confirmation of data in H2 console:
   > The API has a single endpoint “/incentive” which accepts JSON POST requests and can be reached at 
   > "http://localhost:8080/incentive" (when the aforementioned jar is running). 
 
-- questions for investigation:
-  - what is a executable JAR?
-  - how to run a JAR file?
-  - 
+- let's take a look at Test4 tests to see what it expects and provides
+  - loads the users, loads the transactions, and sends them as messages over Kafka
+
+- running an executable jar:
+  - `java -jar full-file-path.jar`
+  - or just use IntelliJ's Run button to run the jar file
+  - https://docs.oracle.com/javase/tutorial/deployment/jar/run.html#:~:text=JAR%20Files%20as%20Applications&text=The%20%2Djar%20flag%20tells%20the,is%20the%20application's%20entry%20point.&text=The%20header's%20value%2C%20classname%2C%20is,an%20Application's%20Entry%20Point%20section.
 
 
+- testing endpoint on Postman:
+  - construct a test JSON object (matching the `Transaction` fields)
+  - send a POST request using the test object to the endpoint `http://localhost:8080/incentive`
+  - The endpoint will respond with a JSON serialized Incentive object which has a single field: “amount.”
+
+- Successful response on Postman:
+![img_3.png](img_3.png)
+
+### Step 4: how to structure the application while adding the 3rd party API?
 
 
+- *key question: system architecture while integrating 3rd party APIs*
+  - when integrating a 3rd party API with a Spring Boot application, what class of the application handles this integration?
+    - what is best practice for where to integrate 3rd party APIs within Spring Boot applications?
+    - **the service layer?**
+    - how does the service layer interact with the controller layer?
+    - currently it seems like the controller layer is in the JAR
+    - I need to learn the DTO concept a lot better, it plays a part (probably)
+  - HELPFUL explanation in the directions:
+  - > After a transaction is validated, 
+    > it should be posted to the incentive API. 
+    > The incentive API will respond with an amount >= 0, 
+    > which should be recorded alongside the transaction amount in a new incentive field. 
+    > When modifying user balances, the incentive should be added to the recipient’s balance, 
+    > but should not be deducted from the sender’s balance.
+  - reading more:
+    - https://spring.io/guides/gs/consuming-rest
+    - which client library to use?
+      - `WebClient` vs `RestTemplate`
+      - > NOTE: As of 6.1, RestClient offers a more modern API for synchronous HTTP access. For asynchronous and streaming scenarios, consider the reactive WebClient.
+      - https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/web/client/RestTemplate.html
+      - since this project is using Spring 3.2 instead of Spring 6, we're going to go with RestTemplate (stable option for this version)
+  - using a dedicated client class clarifies what type of calls we're making (right?)
+    - @Component 
+    - it's only job is to call the 3rd party API and return the response
+  - the service (`TransactionKafkaListener`) calls the client class
 
 
+- Does this mean we're adding a new field to the `Transaction` entity?
+  - > which should be recorded alongside the transaction amount in a new incentive field
+
+### Step 5: general implementation plan & learning Spring `RestTemplate`
+
+- general plan for how to implement:
+````aiignore
+    public void postTransaction() {
+        // calls the client class
+        // the client class makes the API call and returns the response
+
+        // create a variable for the return value of the API call here
+
+        //
+    }
+````
+
+-  `TransactionKafkaListener` is the service that handles messages from Kafka
+  - receives them with `@KafkaListener`
+  - validates
 
 
+- base URL for the API:
+  - `http://localhost:8080
+- one endpoint:
+  - `/incentive`
+- the endpoint accepts a POST request with a JSON body containing the following fields:
+  - `senderId`
+  - `recipientId`
+  - `amount`
+- the endpoint returns a JSON body containing the following fields:
+  - `amount`
+
+- > Hint: you should let Spring take care of serialization 
+  > and simply pass a Transaction object to the method you call on your RestTemplate
 
 
+- After a transaction is validated, 
+- it should be posted to the incentive API. 
+- The incentive API will respond with an amount >= 0, 
+- which should be recorded alongside the transaction amount in a new incentive field. 
+- When modifying user balances, 
+- the incentive should be added to the recipient’s balance, 
+- but should not be deducted from the sender’s balance. 
+
+that's it.
+
+```    
+  public String processTransaction(Transaction transaction) {
+        UserRecord sender = userRepository.findById(transaction.getSenderId());
+        UserRecord recipient = userRepository.findById(transaction.getRecipientId());
+
+        //  check if transaction is valid  
+        if (!transactionValidationService.isValid(transaction)) {
+            System.out.println("Transaction is invalid");
+            return "Invalid transaction. 
+                              Transaction discarded. 
+                              Please try again and ensure that 
+                              (1) the Sender Id and Recipient Id are valid and 
+                              (2) that the sender's balance is equal or above 
+                              the transaction amount.";
+        }
+        
+        // transaction is valid.
+        
+        // call `post to incentive API here
+        // set the returned incentive amount to a variable here to use in updating recipient balance
+        
+        //save transaction to database
+        transactionRecordRepository.save(new TransactionRecord(transaction));
+
+        //update sender balance and SAVE TO DB!
+        sender.setBalance(sender.getBalance() - transaction.getAmount());
+        userRepository.save(sender);
+
+        //update recipient balance and SAVE TO DB!
+        recipient.setBalance(recipient.getBalance() + transaction.getAmount());
+        // AND add incentive amount ***
+        userRepository.save(recipient);
+
+        return "Transaction saved to database and updated sender and recipient balances.";
+    }
+```
 
 
+- `TransactionKafkaListener` is the service that handles messages from Kafka
+  - receives them with `@KafkaListener`
+  - validates
+  - calls the client class `TransactionIncentiveClient`
+    - this client is what posts the transaction to the API
+    - this client uses dependency injection to bring in the `RestTemplate` class and make the API call
+  - the `RestClientConfig` creates the `RestTemplate` isntance
 
 
+- reading
+  - https://docs.spring.io/spring-boot/reference/io/rest-client.html#:~:text=RestClient%20or%20RestTemplate%20.-,WebClient,Kotlin
+  - correction about how to create the RestTemplate:
+    - > Since RestTemplate instances often need to be customized before being used, 
+      > Spring Boot does not provide any single auto-configured RestTemplate bean. 
+      > It does, however, auto-configure a RestTemplateBuilder, 
+      > which can be used to create RestTemplate instances when needed. 
+      > The auto-configured RestTemplateBuilder ensures that sensible HttpMessageConverters 
+      > and an appropriate ClientHttpRequestFactory are applied to RestTemplate instances.
+    - using the auto-configured RestTemplateBuilder will protect against unexepected errors. Refactoring from:
 
+    ```
+    @Configuration
+    public class RestClientConfig {
+  
+      @Bean
+      public RestTemplate restTemplate() {
+          return new RestTemplate();
+      }
+    }
+    ```
+    
+    - the question had been:  
+      "I could also use the `RestTemplateBuilder` here,
+       but would that be unnecessary complexity for this project?"
+    - as i read further, this seems like a very complicated setup. is this really necessary?
 
-
-
-
-
-
-
+  - can we call `RestClient` using annotations instead?
+    - what's the difference between `RestClient` and `RestTemplate`?
+  - https://docs.spring.io/spring-boot/reference/io/rest-client.html#io.rest-client.httpservice
 
